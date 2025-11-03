@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>影子跟读训练器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    
+    <!-- 配置Tailwind -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6',
+                        secondary: '#10B981',
+                        dark: '#1E293B',
+                        light: '#F8FAFC',
+                        success: '#10B981',
+                        error: '#EF4444',
+                        warning: '#F59E0B'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .subtitles-container {
+                max-height: calc(100vh - 12rem);
+            }
+            .subtitle-item {
+                @apply p-3 mb-2 rounded-lg transition-all duration-300 cursor-pointer;
+            }
+            .subtitle-item:hover {
+                @apply bg-primary/10;
+            }
+            .subtitle-item.active {
+                @apply bg-primary/20 border-l-4 border-primary;
+            }
+            .control-btn {
+                @apply px-4 py-2 rounded-lg transition-colors flex items-center;
+            }
+            .current-subtitle-word {
+                @apply cursor-pointer hover:text-primary transition-colors;
+            }
+            .current-subtitle-word:hover {
+                @apply underline;
+            }
+            .correction-word {
+                @apply px-1 rounded mx-0.5;
+            }
+            .correction-word.correct {
+                @apply bg-success/20 text-success;
+            }
+            .correction-word.incorrect {
+                @apply bg-error/20 text-error line-through;
+            }
+            .correction-word.missing {
+                @apply bg-warning/20 text-warning;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans text-dark">
+    <div class="container mx-auto px-4 py-6">
+        <!-- 标题区域 -->
+        <header class="mb-6 text-center">
+            <h1 class="text-[clamp(1.5rem,3vw,2.5rem)] font-bold text-primary mb-2">
+                <i class="fa fa-play-circle mr-2"></i>影子跟读训练器
+            </h1>
+            <p class="text-gray-600">左侧导入视频，右侧导入SRT字幕，点击字幕自动定位播放，点击单词可翻译</p>
+        </header>
+        
+        <!-- 主要内容区域 -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- 左侧视频区域 -->
+            <div class="bg-white rounded-xl shadow-md p-4 flex flex-col">
+                <h2 class="text-xl font-semibold mb-4 flex items-center">
+                    <i class="fa fa-video-camera text-primary mr-2"></i>视频播放区
+                </h2>
+                
+                <!-- 视频导入区域 -->
+                <div id="video-upload" class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center mb-4 cursor-pointer hover:border-primary transition-colors">
+                    <i class="fa fa-cloud-upload text-5xl text-gray-400 mb-3"></i>
+                    <p class="text-gray-500">点击或拖拽视频文件到此处</p>
+                    <input type="file" id="file-input" accept="video/*" class="hidden">
+                </div>
+                
+                <!-- 视频播放器 -->
+                <div id="video-container" class="hidden flex flex-col flex-grow">
+                    <video id="video-player" class="w-full rounded-lg shadow-sm" controls></video>
+                    
+                    <!-- 字幕控制按钮 -->
+                    <div class="mt-2 flex justify-end">
+                        <button id="toggle-subtitle" class="control-btn bg-gray-200 text-dark hover:bg-gray-300">
+                            <i class="fa fa-eye-slash mr-2"></i>隐藏字幕
+                        </button>
+                    </div>
+                    
+                    <!-- 当前字幕显示区 -->
+                    <div id="current-subtitle-container" class="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <h3 class="text-sm font-medium text-gray-500 mb-2">当前字幕：</h3>
+                        <div id="current-subtitle-display" class="text-lg min-h-[40px]">
+                            <!-- 当前字幕内容将在这里显示 -->
+                        </div>
+                    </div>
+                    
+                    <!-- 听写字幕区域 -->
+                    <div class="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <h3 class="text-sm font-medium text-gray-500 mb-2">听写字幕：</h3>
+                        <textarea id="subtitle听写" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary" placeholder="请听写上面的字幕内容..."></textarea>
+                        <div class="mt-2 flex justify-end">
+                            <button id="check听写" class="control-btn bg-primary text-white hover:bg-primary/90">
+                                <i class="fa fa-check mr-2"></i>检查听写
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- 听写检查结果 -->
+                    <div id="听写结果" class="mt-3 p-4 bg-gray-50 rounded-lg border border-gray-200 hidden">
+                        <h3 class="text-sm font-medium text-gray-500 mb-2">
+                            <i class="fa fa-check-circle text-primary mr-1"></i>检查结果：
+                        </h3>
+                        <div id="correction-display" class="text-gray-700"></div>
+                        <div id="score-display" class="mt-2 font-medium"></div>
+                    </div>
+                    
+                    <!-- 单词翻译结果区 -->
+                    <div id="translation-result" class="mt-3 p-4 bg-gray-50 rounded-lg border border-gray-200 hidden">
+                        <h3 class="text-sm font-medium text-gray-500 mb-2">
+                            <i class="fa fa-language text-primary mr-1"></i>单词翻译：
+                        </h3>
+                        <div class="flex flex-col">
+                            <p class="font-medium" id="translated-word"></p>
+                            <p class="text-gray-700 mt-1" id="translation-content"></p>
+                        </div>
+                    </div>
+                    
+                    <!-- 视频控制按钮区域 -->
+                    <div class="mt-4 flex flex-wrap gap-3 items-center">
+                        <button id="play-pause-btn" class="control-btn bg-primary text-white hover:bg-primary/90">
+                            <i class="fa fa-pause mr-2"></i>暂停
+                        </button>
+                        
+                        <div class="flex items-center border rounded-lg overflow-hidden">
+                            <button id="decrease-speed" class="control-btn bg-gray-100 hover:bg-gray-200">
+                                <i class="fa fa-minus"></i>
+                            </button>
+                            <span id="speed-display" class="px-4 py-2 bg-white border-x">1.0x</span>
+                            <button id="increase-speed" class="control-btn bg-gray-100 hover:bg-gray-200">
+                                <i class="fa fa-plus"></i>
+                            </button>
+                        </div>
+                        
+                        <button id="stop-repeat" class="control-btn bg-gray-500 text-white hover:bg-gray-600 ml-auto">
+                            <i class="fa fa-stop-circle mr-2"></i>停止重复
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 右侧字幕区域 -->
+            <div class="bg-white rounded-xl shadow-md p-4 flex flex-col">
+                <h2 class="text-xl font-semibold mb-4 flex items-center">
+                    <i class="fa fa-closed-captioning-o text-primary mr-2"></i>字幕列表
+                </h2>
+                
+                <!-- 字幕导入区域 -->
+                <div id="subtitle-upload" class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center mb-4 cursor-pointer hover:border-primary transition-colors">
+                    <i class="fa fa-file-text-o text-4xl text-gray-400 mb-3"></i>
+                    <p class="text-gray-500">点击或拖拽SRT字幕文件到此处</p>
+                    <input type="file" id="subtitle-file-input" accept=".srt" class="hidden">
+                </div>
+                
+                <div id="subtitle-placeholder" class="flex-grow flex flex-col items-center justify-center text-gray-400 border-2 border-dashed rounded-lg p-6">
+                    <i class="fa fa-file-text-o text-5xl mb-3"></i>
+                    <p>导入SRT字幕文件后显示字幕列表</p>
+                    <p class="text-sm mt-2">点击字幕可跳转到对应时间点并重复播放</p>
+                </div>
+                
+                <div id="subtitles-list" class="hidden subtitles-container overflow-y-auto">
+                    <!-- 字幕项将通过JS动态添加 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 配置参数 - 硅基流动API
+        const CONFIG = {
+            API_KEY: 'sk-aaovcfdkxjqrxnwayicxttjyfoavvberrgyldhhsnqrlndyt',
+            API_URL: 'https://api.siliconflow.cn/v1/chat/completions', 
+            MODEL: 'Qwen/Qwen2.5-Coder-7B-Instruct',  
+            MAX_FILE_SIZE: 5 * 1024 * 1024, // 5MB
+            ALLOWED_TYPES: ['text/plain', 'application/pdf']
+        }
+        
+        // 全局变量
+        let subtitles = [];
+        let repeatInterval = null;
+        let videoElement = null;
+        let currentSubtitle = null;
+        let subtitleVisible = true; // 字幕是否可见
+        const playbackSpeeds = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]; // 支持的播放速度
+        let currentSpeedIndex = 2; // 默认1.0x
+        
+        // DOM 元素
+        const fileInput = document.getElementById('file-input');
+        const videoUpload = document.getElementById('video-upload');
+        const videoContainer = document.getElementById('video-container');
+        const videoPlayer = document.getElementById('video-player');
+        const subtitleFileInput = document.getElementById('subtitle-file-input');
+        const subtitleUpload = document.getElementById('subtitle-upload');
+        const subtitlePlaceholder = document.getElementById('subtitle-placeholder');
+        const subtitlesList = document.getElementById('subtitles-list');
+        const stopRepeatBtn = document.getElementById('stop-repeat');
+        const playPauseBtn = document.getElementById('play-pause-btn');
+        const decreaseSpeedBtn = document.getElementById('decrease-speed');
+        const increaseSpeedBtn = document.getElementById('increase-speed');
+        const speedDisplay = document.getElementById('speed-display');
+        const currentSubtitleDisplay = document.getElementById('current-subtitle-display');
+        const currentSubtitleContainer = document.getElementById('current-subtitle-container');
+        const toggleSubtitleBtn = document.getElementById('toggle-subtitle');
+        const translationResult = document.getElementById('translation-result');
+        const translatedWord = document.getElementById('translated-word');
+        const translationContent = document.getElementById('translation-content');
+        const subtitle听写 = document.getElementById('subtitle听写');
+        const check听写 = document.getElementById('check听写');
+        const 听写结果 = document.getElementById('听写结果');
+        const correctionDisplay = document.getElementById('correction-display');
+        const scoreDisplay = document.getElementById('score-display');
+        
+        // 初始化
+        function init() {
+            videoElement = videoPlayer;
+            
+            // 事件监听
+            videoUpload.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', handleFileUpload);
+            videoUpload.addEventListener('dragover', handleDragOver);
+            videoUpload.addEventListener('drop', handleDrop);
+            
+            subtitleUpload.addEventListener('click', () => subtitleFileInput.click());
+            subtitleFileInput.addEventListener('change', handleSubtitleFileUpload);
+            subtitleUpload.addEventListener('dragover', handleDragOver);
+            subtitleUpload.addEventListener('drop', handleSubtitleDrop);
+            
+            stopRepeatBtn.addEventListener('click', stopRepeatPlayback);
+            playPauseBtn.addEventListener('click', togglePlayPause);
+            decreaseSpeedBtn.addEventListener('click', decreasePlaybackSpeed);
+            increaseSpeedBtn.addEventListener('click', increasePlaybackSpeed);
+            check听写.addEventListener('click', checkSubtitle听写);
+            toggleSubtitleBtn.addEventListener('click', toggleSubtitleVisibility);
+            
+            videoPlayer.addEventListener('timeupdate', handleVideoTimeUpdate);
+            videoPlayer.addEventListener('play', updatePlayPauseButton);
+            videoPlayer.addEventListener('pause', updatePlayPauseButton);
+        }
+        
+        // 切换字幕可见性
+        function toggleSubtitleVisibility() {
+            subtitleVisible = !subtitleVisible;
+            
+            if (subtitleVisible) {
+                currentSubtitleContainer.classList.remove('hidden');
+                toggleSubtitleBtn.innerHTML = '<i class="fa fa-eye-slash mr-2"></i>隐藏字幕';
+            } else {
+                currentSubtitleContainer.classList.add('hidden');
+                toggleSubtitleBtn.innerHTML = '<i class="fa fa-eye mr-2"></i>显示字幕';
+            }
+        }
+        
+        // 处理文件上传通用函数
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.currentTarget.classList.add('border-primary');
+        }
+        
+        function handleDragLeave(e) {
+            e.currentTarget.classList.remove('border-primary');
+        }
+        
+        // 视频文件处理
+        function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (file) {
+                displayVideo(file);
+            }
+        }
+        
+        function handleDrop(e) {
+            e.preventDefault();
+            e.currentTarget.classList.remove('border-primary');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('video/')) {
+                displayVideo(file);
+            }
+        }
+        
+        // 显示视频
+        function displayVideo(file) {
+            const videoURL = URL.createObjectURL(file);
+            videoPlayer.src = videoURL;
+            videoUpload.classList.add('hidden');
+            videoContainer.classList.remove('hidden');
+            resetPlaybackSpeed();
+        }
+        
+        // 字幕文件处理
+        function handleSubtitleFileUpload(e) {
+            const file = e.target.files[0];
+            if (file && file.name.endsWith('.srt')) {
+                parseSRTFile(file);
+            }
+        }
+        
+        function handleSubtitleDrop(e) {
+            e.preventDefault();
+            e.currentTarget.classList.remove('border-primary');
+            const file = e.dataTransfer.files[0];
+            if (file && file.name.endsWith('.srt')) {
+                parseSRTFile(file);
+            }
+        }
+        
+        // 解析SRT字幕文件
+        function parseSRTFile(file) {
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                const content = e.target.result;
+                subtitles = parseSRTContent(content);
+                
+                if (subtitles.length > 0) {
+                    renderSubtitles();
+                    subtitlePlaceholder.classList.add('hidden');
+                    subtitlesList.classList.remove('hidden');
+                }
+            };
+            
+            reader.readAsText(file, 'utf-8');
+        }
+        
+        // 解析SRT内容
+        function parseSRTContent(content) {
+            const blocks = content.split(/\r?\n\r?\n/).filter(block => block.trim() !== '');
+            const parsedSubtitles = [];
+            
+            blocks.forEach(block => {
+                const lines = block.split(/\r?\n/).filter(line => line.trim() !== '');
+                
+                if (lines.length >= 2) {
+                    const timeLine = lines[1];
+                    const timeMatch = timeLine.match(/(\d+:\d+:\d+,\d+) --> (\d+:\d+:\d+,\d+)/);
+                    
+                    if (timeMatch) {
+                        const startTime = srtTimeToSeconds(timeMatch[1]);
+                        const endTime = srtTimeToSeconds(timeMatch[2]);
+                        const text = lines.slice(2).join('\n').trim();
+                        
+                        if (startTime !== null && endTime !== null && text) {
+                            parsedSubtitles.push({
+                                id: Date.now() + parsedSubtitles.length,
+                                startTime,
+                                endTime,
+                                text
+                            });
+                        }
+                    }
+                }
+            });
+            
+            return parsedSubtitles.sort((a, b) => a.startTime - b.startTime);
+        }
+        
+        // 将SRT时间格式转换为秒
+        function srtTimeToSeconds(timeStr) {
+            const match = timeStr.match(/^(\d+):(\d+):(\d+),(\d+)$/);
+            if (!match) return null;
+            
+            const hours = parseInt(match[1], 10);
+            const minutes = parseInt(match[2], 10);
+            const seconds = parseInt(match[3], 10);
+            const milliseconds = parseInt(match[4], 10);
+            
+            return hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
+        }
+        
+        // 渲染字幕列表
+        function renderSubtitles() {
+            subtitlesList.innerHTML = '';
+            
+            subtitles.forEach(subtitle => {
+                const subtitleItem = document.createElement('div');
+                subtitleItem.className = 'subtitle-item';
+                subtitleItem.dataset.id = subtitle.id;
+                
+                subtitleItem.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="font-medium">${formatTime(subtitle.startTime)} - ${formatTime(subtitle.endTime)}</p>
+                            <p class="text-gray-700 mt-1">${subtitle.text}</p>
+                        </div>
+                    </div>
+                `;
+                
+                subtitleItem.addEventListener('click', () => {
+                    playSubtitle(subtitle);
+                });
+                
+                subtitlesList.appendChild(subtitleItem);
+            });
+        }
+        
+        // 显示当前字幕并将单词转为可点击状态
+        function displayCurrentSubtitle(subtitle) {
+            if (!subtitle) {
+                currentSubtitleDisplay.innerHTML = '';
+                currentSubtitle = null;
+                return;
+            }
+            
+            currentSubtitle = subtitle;
+            const words = subtitle.text.split(/(\s+|[\.,!?;:"'\(\)])/);
+            
+            let html = '';
+            words.forEach(word => {
+                if (/[a-zA-Z]/.test(word)) {
+                    const cleanWord = word.replace(/[^a-zA-Z]/g, '');
+                    const punctuation = word.replace(/[a-zA-Z]/g, '');
+                    
+                    if (cleanWord) {
+                        html += `<span class="current-subtitle-word" data-word="${cleanWord}">${cleanWord}</span>${punctuation}`;
+                    } else {
+                        html += word;
+                    }
+                } else {
+                    html += word;
+                }
+            });
+            
+            currentSubtitleDisplay.innerHTML = html;
+            
+            document.querySelectorAll('.current-subtitle-word').forEach(el => {
+                el.addEventListener('click', (e) => {
+                    const word = e.currentTarget.dataset.word;
+                    translateWord(word);
+                });
+            });
+        }
+        
+        // 翻译单词（使用硅基流动API）
+        async function translateWord(word) {
+            translatedWord.textContent = word;
+            translationContent.innerHTML = '<i class="fa fa-spinner fa-spin"></i> 正在翻译...';
+            translationResult.classList.remove('hidden');
+
+            try {
+                const messages = [{
+                    "role": "user",
+                    "content": `请将单词"${word}"翻译成中文，并附上常用场景和句型搭配。只返回翻译结果，不要额外说明。`,
+                }];
+
+                const response = await fetch(CONFIG.API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${CONFIG.API_KEY}`,
+                        'X-SiliconFlow-Client': 'web-app/1.0'
+                    },
+                    body: JSON.stringify({
+                        model: CONFIG.MODEL,
+                        messages: messages,
+                        temperature: 0.3,
+                        stream: false
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error?.message || `翻译失败: ${response.status}`);
+                }
+
+                const result = await response.json();
+                const translation = result.choices[0].message.content.trim();
+                translationContent.textContent = translation;
+
+            } catch (error) {
+                console.error('翻译出错:', error);
+                translationContent.textContent = `翻译失败: ${error.message}`;
+            }
+        }
+        
+        // 检查字幕听写
+        function checkSubtitle听写() {
+            if (!currentSubtitle) {
+                alert('没有可检查的字幕，请播放视频');
+                return;
+            }
+            
+            const userInput = subtitle听写.value.trim();
+            if (!userInput) {
+                alert('请输入听写内容');
+                return;
+            }
+            
+            // 处理原字幕和用户输入，提取单词（忽略标点）
+            const originalWords = extractWords(currentSubtitle.text);
+            const userWords = extractWords(userInput);
+            
+            // 比较单词并生成校正结果
+            const { correctionHtml, score } = compareWords(originalWords, userWords);
+            
+            // 显示结果
+            correctionDisplay.innerHTML = correctionHtml;
+            scoreDisplay.textContent = `正确率: ${score}% (${getCorrectCount(originalWords, userWords)}/${originalWords.length})`;
+            听写结果.classList.remove('hidden');
+        }
+        
+        // 提取单词（忽略标点和大小写）
+        function extractWords(text) {
+            // 移除所有标点，分割为单词，转为小写
+            return text
+                .replace(/[^\w\s]/g, '')
+                .split(/\s+/)
+                .filter(word => word.trim() !== '')
+                .map(word => word.toLowerCase());
+        }
+        
+        // 比较单词并生成校正HTML
+        function compareWords(original, userInput) {
+            let correctionHtml = '';
+            let correctCount = 0;
+            const maxLength = Math.max(original.length, userInput.length);
+            
+            for (let i = 0; i < maxLength; i++) {
+                const originalWord = original[i];
+                const userWord = userInput[i];
+                
+                if (!originalWord) {
+                    // 用户输入了额外的单词
+                    correctionHtml += `<span class="correction-word incorrect">${userWord}</span> `;
+                } else if (!userWord) {
+                    // 用户遗漏了单词
+                    correctionHtml += `<span class="correction-word missing">${originalWord}</span> `;
+                } else if (originalWord === userWord) {
+                    // 单词正确
+                    correctionHtml += `<span class="correction-word correct">${originalWord}</span> `;
+                    correctCount++;
+                } else {
+                    // 单词错误 - 标红显示
+                    correctionHtml += `<span class="correction-word incorrect">${userWord}→${originalWord}</span> `;
+                }
+            }
+            
+            const score = original.length > 0 ? Math.round((correctCount / original.length) * 100) : 0;
+            return { correctionHtml, score };
+        }
+        
+        // 获取正确的单词数量
+        function getCorrectCount(original, userInput) {
+            let count = 0;
+            const minLength = Math.min(original.length, userInput.length);
+            
+            for (let i = 0; i < minLength; i++) {
+                if (original[i] === userInput[i]) {
+                    count++;
+                }
+            }
+            
+            return count;
+        }
+        
+        // 播放指定字幕对应的视频片段
+        function playSubtitle(subtitle) {
+            stopRepeatPlayback();
+            videoPlayer.currentTime = subtitle.startTime;
+            videoPlayer.play();
+            displayCurrentSubtitle(subtitle);
+            highlightAndScrollToSubtitle(subtitle.id);
+            
+            repeatInterval = setInterval(() => {
+                if (videoPlayer.currentTime >= subtitle.endTime) {
+                    videoPlayer.currentTime = subtitle.startTime;
+                    videoPlayer.play();
+                }
+            }, 100);
+            
+            stopRepeatBtn.classList.remove('hidden');
+        }
+        
+        // 停止重复播放
+        function stopRepeatPlayback() {
+            if (repeatInterval) {
+                clearInterval(repeatInterval);
+                repeatInterval = null;
+            }
+            stopRepeatBtn.classList.add('hidden');
+            
+            document.querySelectorAll('.subtitle-item').forEach(item => {
+                item.classList.remove('active');
+            });
+        }
+        
+        // 切换播放/暂停状态
+        function togglePlayPause() {
+            if (videoPlayer.paused || videoPlayer.ended) {
+                videoPlayer.play();
+            } else {
+                videoPlayer.pause();
+            }
+        }
+        
+        // 更新播放/暂停按钮显示
+        function updatePlayPauseButton() {
+            if (videoPlayer.paused || videoPlayer.ended) {
+                playPauseBtn.innerHTML = '<i class="fa fa-play mr-2"></i>播放';
+                playPauseBtn.classList.remove('bg-primary');
+                playPauseBtn.classList.add('bg-secondary');
+            } else {
+                playPauseBtn.innerHTML = '<i class="fa fa-pause mr-2"></i>暂停';
+                playPauseBtn.classList.remove('bg-secondary');
+                playPauseBtn.classList.add('bg-primary');
+            }
+        }
+        
+        // 播放速度控制
+        function decreasePlaybackSpeed() {
+            if (currentSpeedIndex > 0) {
+                currentSpeedIndex--;
+                setPlaybackSpeed(playbackSpeeds[currentSpeedIndex]);
+            }
+        }
+        
+        function increasePlaybackSpeed() {
+            if (currentSpeedIndex < playbackSpeeds.length - 1) {
+                currentSpeedIndex++;
+                setPlaybackSpeed(playbackSpeeds[currentSpeedIndex]);
+            }
+        }
+        
+        function setPlaybackSpeed(speed) {
+            videoPlayer.playbackRate = speed;
+            speedDisplay.textContent = `${speed}x`;
+            
+            if (repeatInterval) {
+                clearInterval(repeatInterval);
+                const currentTime = videoPlayer.currentTime;
+                const currentSubtitle = subtitles.find(sub => 
+                    currentTime >= sub.startTime && currentTime <= sub.endTime
+                );
+                
+                if (currentSubtitle) {
+                    const interval = Math.max(50, 100 / speed);
+                    repeatInterval = setInterval(() => {
+                        if (videoPlayer.currentTime >= currentSubtitle.endTime) {
+                            videoPlayer.currentTime = currentSubtitle.startTime;
+                            videoPlayer.play();
+                        }
+                    }, interval);
+                }
+            }
+        }
+        
+        function resetPlaybackSpeed() {
+            currentSpeedIndex = 2;
+            setPlaybackSpeed(playbackSpeeds[currentSpeedIndex]);
+        }
+        
+        // 高亮并滚动到当前字幕
+        function highlightAndScrollToSubtitle(subtitleId) {
+            const subtitleElements = document.querySelectorAll('.subtitle-item');
+            let targetElement = null;
+            
+            subtitleElements.forEach(item => {
+                if (parseInt(item.dataset.id) === subtitleId) {
+                    item.classList.add('active');
+                    targetElement = item;
+                } else {
+                    item.classList.remove('active');
+                }
+            });
+            
+            if (targetElement) {
+                scrollToSubtitle(targetElement);
+            }
+        }
+        
+        function scrollToSubtitle(element) {
+            const container = subtitlesList;
+            const containerRect = container.getBoundingClientRect();
+            const elementRect = element.getBoundingClientRect();
+            
+            const relativeTop = elementRect.top - containerRect.top + container.scrollTop;
+            const targetScrollTop = relativeTop - (containerRect.height / 2) + (elementRect.height / 2);
+            
+            container.scrollTo({
+                top: targetScrollTop,
+                behavior: 'smooth'
+            });
+        }
+        
+        // 处理视频时间更新
+        function handleVideoTimeUpdate() {
+            const currentTime = videoPlayer.currentTime;
+            const activeSubtitle = subtitles.find(sub => 
+                currentTime >= sub.startTime && currentTime <= sub.endTime
+            );
+            
+            displayCurrentSubtitle(activeSubtitle);
+            
+            if (!repeatInterval) {
+                if (activeSubtitle) {
+                    highlightAndScrollToSubtitle(activeSubtitle.id);
+                } else {
+                    document.querySelectorAll('.subtitle-item').forEach(item => {
+                        item.classList.remove('active');
+                    });
+                }
+            }
+        }
+        
+        // 格式化时间
+        function formatTime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            
+            return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+        
+        // 添加拖拽离开事件监听
+        videoUpload.addEventListener('dragleave', handleDragLeave);
+        subtitleUpload.addEventListener('dragleave', handleDragLeave);
+        
+        // 初始化应用
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
